@@ -1,0 +1,53 @@
+name: monitor-concurso
+
+# Roda na nuvem do GitHub (grátis). O PC pode estar desligado.
+on:
+  schedule:
+    # Horários em UTC. Brasil = UTC-3.
+    # 11h, 14h, 18h, 21h UTC = 8h, 11h, 15h, 18h de Brasília, de seg a sex.
+    - cron: "0 11,14,18,21 * * 1-5"
+  workflow_dispatch: {}   # permite rodar na mão pelo botão "Run workflow"
+
+permissions:
+  contents: write   # precisa pra commitar o estado.json de volta
+
+concurrency:
+  group: monitor-concurso
+  cancel-in-progress: false
+
+jobs:
+  checar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      - name: Rodar monitor
+        env:
+          # Telegram (opcional)
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # E-mail (opcional)
+          EMAIL_REMETENTE: ${{ secrets.EMAIL_REMETENTE }}
+          EMAIL_SENHA_APP: ${{ secrets.EMAIL_SENHA_APP }}
+          EMAIL_DESTINO: ${{ secrets.EMAIL_DESTINO }}
+          # Push no celular via ntfy.sh (opcional)
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: python monitor.py
+
+      - name: Salvar snapshot (commit do estado.json)
+        run: |
+          git config user.name "monitor-bot"
+          git config user.email "monitor-bot@users.noreply.github.com"
+          git add estado.json
+          if git diff --cached --quiet; then
+            echo "Sem mudança no estado."
+          else
+            git commit -m "chore: atualiza snapshot do diario [skip ci]"
+            git push
+          fi
