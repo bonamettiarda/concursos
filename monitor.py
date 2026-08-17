@@ -226,20 +226,32 @@ def criar_adaptador_querido_diario(nome_cidade, territory_id, termos=("concurso"
     return _adaptador
 
 
-def adaptador_sesa_seap_pr():
+def adaptador_fafipa_proseleta(nome_cidade, informacoes_id):
     """
-    Concurso SESA/SEAP-PR — Edital nº 265/2025-DRH/SEAP (Médico, cadastro
-    de reserva). A FAFIPA publica TODOS os editais/atos desse concurso
-    numa única página (plataforma ProSeleta), então basta acompanhar essa
-    página — sem precisar do Diário Oficial do Estado (que, aliás, migrou
-    de plataforma em 13/07/2026 e está instável).
+    FÁBRICA de adaptador para concursos organizados pela Fundação FAFIPA na
+    plataforma ProSeleta. A FAFIPA publica TODOS os editais/atos de um
+    concurso numa única página "informações" (identificada por um ID
+    numérico na URL) — então basta acompanhar essa página, sem depender do
+    Diário Oficial do município/estado (que pode atrasar ou trocar de
+    plataforma, como já aconteceu com o do Estado em 13/07/2026).
 
-    Página oficial: https://www.fundacaofafipa.org.br/informacoes/4122/
-    (usamos o espelho ps-adm-281.selecao.net.br, mesma plataforma, que
-    responde sem bloqueio de robô).
+    Como descobrir o informacoes_id de um concurso novo: abra a página do
+    concurso no site da FAFIPA (fundacaofafipa.org.br) e olhe a URL — ela
+    termina em /informacoes/NUMERO/. Usamos o espelho ps-adm-281.selecao.net.br
+    (mesma plataforma) porque responde sem bloqueio de robô.
+
+    IDs já usados aqui:
+        SESA/SEAP-PR       (Edital 265/2025-DRH/SEAP)  4122
+        Prado Ferreira-PR  (Edital 001/2026)            4162
+
+    NOTA (corrigido em ago/2026): esta função antes era específica pro
+    SESA/SEAP e tinha um bug — faltava o "return _adaptador" no final,
+    então CIDADES recebia None no lugar do adaptador e o monitor dessa
+    cidade nunca rodava de verdade (o erro ficava só no log do Actions).
+    Agora é fábrica genérica e reaproveitável para qualquer concurso FAFIPA.
     """
-    NOME = "SESA/SEAP-PR (Edital 265/2025)"
-    URL = "https://ps-adm-281.selecao.net.br/informacoes/4122/"
+    NOME = nome_cidade
+    URL = f"https://ps-adm-281.selecao.net.br/informacoes/{informacoes_id}/"
 
     def _adaptador():
         try:
@@ -272,6 +284,9 @@ def adaptador_sesa_seap_pr():
                 "link": href,
             }
         return list(resultados.values())
+
+    _adaptador.__name__ = f"adaptador_fafipa_{_sem_acento(nome_cidade).replace(' ', '_')}"
+    return _adaptador
 
 def adaptador_cambe_pr():
     """
@@ -336,8 +351,10 @@ CIDADES = [
     criar_adaptador_querido_diario("Prado Ferreira-PR", "4120333"),
     criar_adaptador_querido_diario("Marechal C. Rondon-PR", "4114609"),
 
-    # Concurso estadual SESA/SEAP-PR (Edital 265/2025 — cadastro de reserva):
-    adaptador_sesa_seap_pr(),
+    # Concursos organizados pela FAFIPA na plataforma ProSeleta — cada um é
+    # a mesma "página de informações", só muda o ID no fim da URL:
+    adaptador_fafipa_proseleta("SESA/SEAP-PR (Edital 265/2025)", "4122"),
+    adaptador_fafipa_proseleta("Prado Ferreira-PR (Edital 001/2026)", "4162"),
 
     # Para adicionar outra cidade da MESMA plataforma da Catanduvas, copie:
     # adaptador_portal_padrao("Outra Cidade-PR", "https://outracidade.pr.gov.br"),
