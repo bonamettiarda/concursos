@@ -288,6 +288,101 @@ def adaptador_fafipa_proseleta(nome_cidade, informacoes_id):
     _adaptador.__name__ = f"adaptador_fafipa_{_sem_acento(nome_cidade).replace(' ', '_')}"
     return _adaptador
 
+def adaptador_marechal_rondon_pr():
+    """
+    Marechal Cândido Rondon-PR — Diário Oficial Eletrônico (plataforma
+    DIOENET / Plenus Sistemas).
+
+    A banca do concurso (UNIOESTE/COGEPS) BLOQUEIA scraping — confirmado em
+    ago/2026, retorna uma página de "navegador incompatível" mesmo com um
+    requests.get comum com User-Agent de Chrome (é bloqueio via JS/
+    fingerprint, não só User-Agent — não dá pra contornar sem um browser
+    real tipo Selenium/Playwright, que este projeto não usa). Por isso
+    monitoramos o Diário Oficial do MUNICÍPIO em vez da banca: a DIOENET já
+    tem uma seção dedicada "Concursos Públicos / Processos Seletivos" e o
+    texto de CADA publicação já vem completo na própria página de
+    "Publicações da edição" — sem precisar abrir PDF nenhum.
+
+    Estratégia: 1) lista as edições mais recentes; 2) pra cada uma, abre a
+    página de publicações e extrai bloco a bloco usando o padrão de texto
+    observado: linha do TÍTULO, depois linha "Categoria • Subcategoria",
+    depois a palavra "Visualizar", depois o conteúdo. Não existe link
+    individual por publicação (o "Visualizar" só expande texto na mesma
+    página) — por isso a chave de deduplicação é (edição + título).
+
+    ATENÇÃO: esse padrão foi inferido a partir do texto renderizado, porque
+    este domínio não está liberado no sandbox de desenvolvimento pra
+    inspecionar o HTML bruto diretamente. Se a DIOENET mudar o layout, o
+    adaptador pode parar de achar publicações — olhe o log do Actions: se
+    aparecer "nenhuma publicação encontrada", o padrão mudou e o parsing
+    precisa ser revisto (é só ajustar a lógica de _adaptador, o resto do
+    monitor não muda).
+    """
+    NOME = "Marechal C. Rondon-PR (Diário Oficial)"
+    LISTA_URL = "https://plenussistemas.dioenet.com.br/list/marechal-candido-rondon"
+    QTD_EDICOES = 5  # cobre quase 1 semana de publicações mesmo se o monitor ficar parado
+
+    def _adaptador():
+        try:
+            r = requests.get(LISTA_URL, headers=HEADERS, timeout=25)
+            r.raise_for_status()
+        except requests.RequestException as e:
+            print(f"[{NOME}] erro na busca da lista de edições: {e}", file=sys.stderr)
+            return []
+
+        sopa = BeautifulSoup(r.text, "html.parser")
+        edicoes = []
+        for a in sopa.find_all("a", href=True):
+            href = a["href"]
+            if "/diario/publicacoes/" not in href:
+                continue
+            if href.startswith("/"):
+                href = "https://plenussistemas.dioenet.com.br" + href
+            if href not in edicoes:
+                edicoes.append(href)
+            if len(edicoes) >= QTD_EDICOES:
+                break
+
+        resultados = {}
+        for url_edicao in edicoes:
+            try:
+                r2 = requests.get(url_edicao, headers=HEADERS, timeout=25)
+                r2.raise_for_status()
+            except requests.RequestException as e:
+                print(f"[{NOME}] erro na busca de {url_edicao}: {e}", file=sys.stderr)
+                continue
+
+            texto = BeautifulSoup(r2.text, "html.parser").get_text("\n")
+            linhas = [l.strip() for l in texto.split("\n") if l.strip()]
+
+            achou_publicacao = False
+            for i, linha in enumerate(linhas):
+                if linha != "Visualizar" or i < 2:
+                    continue
+                achou_publicacao = True
+                titulo = linhas[i - 2]
+                categoria = linhas[i - 1]
+                if not bate_palavra(titulo):
+                    continue
+                resultados[f"{url_edicao}#{titulo}"] = {
+                    "cidade": NOME,
+                    "data": "",
+                    "titulo": titulo,
+                    "categoria": categoria,
+                    "link": url_edicao,
+                }
+
+            if not achou_publicacao:
+                print(f"[{NOME}] nenhuma publicação encontrada em {url_edicao} — layout pode ter mudado", file=sys.stderr)
+
+            time.sleep(1)  # gentileza com o servidor
+
+        return list(resultados.values())
+
+    _adaptador.__name__ = "adaptador_marechal_rondon_pr"
+    return _adaptador
+
+
 def adaptador_cambe_pr():
     """
     Cambé-PR — Jornal Oficial do Município, WordPress com o plugin
@@ -407,6 +502,7 @@ CIDADES = [
     criar_adaptador_querido_diario("Goioerê-PR", "4108601"),
     criar_adaptador_querido_diario("Prado Ferreira-PR", "4120333"),
     criar_adaptador_querido_diario("Marechal C. Rondon-PR", "4114609"),
+    adaptador_marechal_rondon_pr(),
 
     # Concursos organizados pela FAFIPA na plataforma ProSeleta — cada um é
     # a mesma "página de informações", só muda o ID no fim da URL:
