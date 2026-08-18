@@ -413,6 +413,7 @@ CIDADES = [
     adaptador_fafipa_proseleta("SESA/SEAP-PR (Edital 265/2025)", "4122"),
     adaptador_fafipa_proseleta("Prado Ferreira-PR (Edital 001/2026)", "4162"),
     adaptador_fafipa_proseleta("Goioerê-PR (Edital 001/2026)", "4183"),
+    adaptador_fafipa_proseleta("Marialva-PR (Edital 01.02/2026 - Médico PSF, CLT)", "4202"),
 
     # Para adicionar outra cidade da MESMA plataforma da Catanduvas, copie:
     # adaptador_portal_padrao("Outra Cidade-PR", "https://outracidade.pr.gov.br"),
