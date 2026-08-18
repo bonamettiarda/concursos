@@ -336,6 +336,62 @@ def adaptador_cambe_pr():
     return _adaptador
 
 
+def adaptador_cambe_unifil_pr():
+    """
+    Cambé-PR — Concurso Público 001/2026, banca Instituto UniFil.
+
+    O site do próprio UniFil (main.institutounifil.com.br) BLOQUEIA robô
+    (bot detection retornou erro mesmo numa consulta simples) — então não dá
+    pra raspar direto de lá. A boa notícia é que a Prefeitura de Cambé
+    espelha TODOS os editais desse concurso numa página dedicada, com o
+    mesmo plugin WordPress Download Manager do Jornal Oficial (mas aqui é
+    direto no site da prefeitura, sem bloqueio):
+
+    https://www.cambe.pr.gov.br/index.php/concursos-publico/concurso-publico-001-2026/
+
+    Diferença pro adaptador_cambe_pr(): aquele lê o Jornal Oficial GERAL do
+    município (todas as secretarias); este lê só a página ESPECÍFICA deste
+    concurso — filtra menos ruído de outros assuntos da prefeitura.
+
+    Nota: os títulos aqui não trazem a data no próprio texto (diferente do
+    Jornal Oficial, que tem "DD.MM.AAAA" no nome da edição), então o campo
+    "data" fica vazio — a notificação ainda mostra o título completo e o link.
+    """
+    NOME = "Cambé-PR (Concurso 001/2026 - UniFil)"
+    URL = "https://www.cambe.pr.gov.br/index.php/concursos-publico/concurso-publico-001-2026/"
+
+    def _adaptador():
+        try:
+            r = requests.get(URL, headers=HEADERS, timeout=25)
+            r.raise_for_status()
+        except requests.RequestException as e:
+            print(f"[{NOME}] erro na busca: {e}", file=sys.stderr)
+            return []
+
+        sopa = BeautifulSoup(r.text, "html.parser")
+        resultados = {}
+        for a in sopa.find_all("a", href=True):
+            titulo = a.get_text(strip=True)
+            href = a["href"]
+            # cada edital vira um link /index.php/download/<slug-do-titulo>/
+            if not titulo or "/index.php/download/" not in href:
+                continue
+            if not bate_palavra(titulo):
+                continue
+
+            resultados[href] = {
+                "cidade": NOME,
+                "data": "",
+                "titulo": titulo,
+                "categoria": "Edital (Concurso 001/2026 - UniFil)",
+                "link": href,
+            }
+        return list(resultados.values())
+
+    _adaptador.__name__ = "adaptador_cambe_unifil_pr"
+    return _adaptador
+
+
 # ---------------------------------------------------------------------------
 # >>> SUAS CIDADES / CONCURSOS <<<  (registre aqui tudo que você acompanha)
 # ---------------------------------------------------------------------------
@@ -345,6 +401,7 @@ CIDADES = [
 
     # Cambé tem adaptador próprio (site direto, sem captcha nem bloqueio):
     adaptador_cambe_pr(),
+    adaptador_cambe_unifil_pr(),
 
     # Cidades via API do Querido Diário (ver observação de cobertura acima):
     criar_adaptador_querido_diario("Goioerê-PR", "4108601"),
@@ -355,6 +412,7 @@ CIDADES = [
     # a mesma "página de informações", só muda o ID no fim da URL:
     adaptador_fafipa_proseleta("SESA/SEAP-PR (Edital 265/2025)", "4122"),
     adaptador_fafipa_proseleta("Prado Ferreira-PR (Edital 001/2026)", "4162"),
+    adaptador_fafipa_proseleta("Goioerê-PR (Edital 001/2026)", "4183"),
 
     # Para adicionar outra cidade da MESMA plataforma da Catanduvas, copie:
     # adaptador_portal_padrao("Outra Cidade-PR", "https://outracidade.pr.gov.br"),
