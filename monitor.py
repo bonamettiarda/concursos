@@ -310,6 +310,16 @@ def adaptador_marechal_rondon_pr():
     individual por publicação (o "Visualizar" só expande texto na mesma
     página) — por isso a chave de deduplicação é (edição + título).
 
+    FILTRO EM DUAS CAMADAS (ajustado em 18/08/2026 após falso positivo real):
+    palavras como "homologação" e "convocação" também aparecem o tempo
+    todo em atos de PREGÃO/LICITAÇÃO, sem nenhuma relação com concurso —
+    isso gerou 3 alertas errados no primeiro dia em produção. Por isso,
+    além do título bater em PALAVRAS_ALVO, agora também exigimos que o
+    CORPO do texto (as ~15 linhas após "Visualizar") mencione "concurso"
+    ou "processo seletivo" explicitamente. Editais de concurso sempre
+    citam isso no corpo (ex.: "considerando o Concurso Público 001/2026"),
+    já pregão/licitação não.
+
     ATENÇÃO: esse padrão foi inferido a partir do texto renderizado, porque
     este domínio não está liberado no sandbox de desenvolvimento pra
     inspecionar o HTML bruto diretamente. Se a DIOENET mudar o layout, o
@@ -321,6 +331,7 @@ def adaptador_marechal_rondon_pr():
     NOME = "Marechal C. Rondon-PR (Diário Oficial)"
     LISTA_URL = "https://plenussistemas.dioenet.com.br/list/marechal-candido-rondon"
     QTD_EDICOES = 5  # cobre quase 1 semana de publicações mesmo se o monitor ficar parado
+    LINHAS_DE_CORPO = 15  # quantas linhas após "Visualizar" contam como corpo do texto
 
     def _adaptador():
         try:
@@ -354,16 +365,31 @@ def adaptador_marechal_rondon_pr():
 
             texto = BeautifulSoup(r2.text, "html.parser").get_text("\n")
             linhas = [l.strip() for l in texto.split("\n") if l.strip()]
+            indices_visualizar = [idx for idx, l in enumerate(linhas) if l == "Visualizar"]
 
             achou_publicacao = False
-            for i, linha in enumerate(linhas):
-                if linha != "Visualizar" or i < 2:
+            for pos, i in enumerate(indices_visualizar):
+                if i < 2:
                     continue
                 achou_publicacao = True
                 titulo = linhas[i - 2]
                 categoria = linhas[i - 1]
                 if not bate_palavra(titulo):
                     continue
+
+                # o corpo vai até o próximo bloco (próximo "Visualizar" menos
+                # o título+categoria dele) ou até LINHAS_DE_CORPO, o que vier
+                # primeiro — nunca pode "vazar" pro bloco seguinte, senão um
+                # pregão vizinho de um edital de concurso contaminaria o teste.
+                proximo_bloco = indices_visualizar[pos + 1] - 2 if pos + 1 < len(indices_visualizar) else len(linhas)
+                fim_corpo = min(i + 1 + LINHAS_DE_CORPO, proximo_bloco, len(linhas))
+                corpo = " ".join(linhas[i + 1: fim_corpo])
+                corpo_norm = _sem_acento(corpo.lower())
+                if "concurso" not in corpo_norm and "processo seletivo" not in corpo_norm:
+                    # é homologação/convocação de outra coisa (pregão,
+                    # licitação, credenciamento etc.) — não é concurso.
+                    continue
+
                 resultados[f"{url_edicao}#{titulo}"] = {
                     "cidade": NOME,
                     "data": "",
